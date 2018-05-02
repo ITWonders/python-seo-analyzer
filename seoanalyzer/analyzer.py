@@ -8,7 +8,7 @@ from urllib.parse import urlsplit
 from xml.dom import minidom
 from requests.structures import CaseInsensitiveDict
 
-
+import inspect
 import argparse
 import json
 # import nltk
@@ -169,7 +169,7 @@ class Page(object):
     Container for each page and the analyzer.
     """
 
-    def __init__(self, url='', site=''):
+    def __init__(self, url='', site='', is_singlepage=True):
         """
         Variables go here, *not* outside of __init__
         """
@@ -180,6 +180,7 @@ class Page(object):
         self.description = u''
         self.keywords = {}
         self.warnings = []
+        self.is_singlepage = is_singlepage
         self.translation = bytes.maketrans(punctuation.encode('utf-8'), str(u' ' * len(punctuation)).encode('utf-8'))
         self.social = {'facebook': {
                             'shares': 0,
@@ -274,7 +275,8 @@ class Page(object):
         self.analyze_title()
         self.analyze_description()
         self.analyze_og(soup_lower)
-        self.analyze_a_tags(soup_unmodified)
+        if not self.is_singlepage:
+            self.analyze_a_tags(soup_unmodified)
         self.analyze_img_tags(soup_lower)
         self.analyze_h1_tags(soup_lower)
         self.social_shares()
@@ -565,7 +567,7 @@ def clean_up():
     Manifest.clear_cache()
 
 
-def analyze(site, sitemap=None, verbose=False, **session_params):
+def analyze(site, sitemap=None, is_singlepage=True, verbose=False, **session_params):
     """Session params are  headers, default cookies, etc...
 
        To quickly see your options, go into python and type:
@@ -617,7 +619,7 @@ def analyze(site, sitemap=None, verbose=False, **session_params):
 
         crawled.append(page.strip().lower())
 
-        pg = Page(page, site)
+        pg = Page(page, site, is_singlepage)
 
         pg.analyze()
 
@@ -665,12 +667,13 @@ if __name__ == "__main__":
     arg_parser = argparse.ArgumentParser()
 
     arg_parser.add_argument('site', help='URL of the site you are wanting to analyze.')
+    arg_parser.add_argument('-sp', '--is-singlepage', help='crawl single page, ignore internal linking', default=True, type=lambda x: (str(x).lower() == 'true'))
     arg_parser.add_argument('-s', '--sitemap', help='URL of the sitemap to seed the crawler with.')
     arg_parser.add_argument('-f', '--output-format', help='Output format.', choices=['json', 'html', ], default='json')
 
     args = arg_parser.parse_args()
 
-    output = analyze(args.site, args.sitemap)
+    output = analyze(args.site, args.sitemap, args.is_singlepage)
 
     if args.output_format == 'html':
         from jinja2 import Environment
