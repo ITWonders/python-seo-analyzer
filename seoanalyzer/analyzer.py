@@ -7,8 +7,12 @@ from string import punctuation
 from urllib.parse import urlsplit
 from xml.dom import minidom
 from requests.structures import CaseInsensitiveDict
+from pymongo import MongoClient
+from bson import Binary, Code
+from bson.json_util import dumps
 
-
+import random
+import inspect
 import argparse
 import json
 # import nltk
@@ -32,6 +36,14 @@ if list(sys.version_info)[:2] >= [3, 6]:
     unicode = str
 ##
 
+# Connection MongoDB
+# Connect To: Localhost:27017
+# Database: itwonders
+try:
+    client = MongoClient('localhost', 27017)
+    db = client['itwonders']
+except:
+    print("Can't connect to MongoDB server with database itwonders.")
 
 # This list of English stop words is taken from the "Glasgow Information
 # Retrieval Group". The original list can be found at
@@ -169,7 +181,7 @@ class Page(object):
     Container for each page and the analyzer.
     """
 
-    def __init__(self, url='', site=''):
+    def __init__(self, url='', site='', is_singlepage=True):
         """
         Variables go here, *not* outside of __init__
         """
@@ -180,6 +192,7 @@ class Page(object):
         self.description = u''
         self.keywords = {}
         self.warnings = []
+        self.is_singlepage = is_singlepage
         self.translation = bytes.maketrans(punctuation.encode('utf-8'), str(u' ' * len(punctuation)).encode('utf-8'))
         self.social = {'facebook': {
                             'shares': 0,
@@ -274,7 +287,8 @@ class Page(object):
         self.analyze_title()
         self.analyze_description()
         self.analyze_og(soup_lower)
-        self.analyze_a_tags(soup_unmodified)
+        if not self.is_singlepage:
+            self.analyze_a_tags(soup_unmodified)
         self.analyze_img_tags(soup_lower)
         self.analyze_h1_tags(soup_lower)
         self.social_shares()
@@ -565,7 +579,7 @@ def clean_up():
     Manifest.clear_cache()
 
 
-def analyze(site, sitemap=None, verbose=False, **session_params):
+def analyze(site, sitemap=None, is_singlepage=True, verbose=False, **session_params):
     """Session params are  headers, default cookies, etc...
 
        To quickly see your options, go into python and type:
@@ -617,7 +631,7 @@ def analyze(site, sitemap=None, verbose=False, **session_params):
 
         crawled.append(page.strip().lower())
 
-        pg = Page(page, site)
+        pg = Page(page, site, is_singlepage)
 
         pg.analyze()
 
@@ -660,17 +674,61 @@ def analyze(site, sitemap=None, verbose=False, **session_params):
 
     return output
 
+def getProjectList():
+    results = []
+    collection = db['projects']
+    for document in collection.find():
+        results.append(document)
+    return dumps(results)
+
+def getKeywords():
+    results = []
+    collection = db['keywords']
+    for document in collection.find():
+        results.append(document)
+    return dumps(results)
+
+def saveKeywords():
+    return "Saving keywords"
+
+def searchKeyword(keyword):
+    found = False
+    rankpos = 0
+    keyword = keyword.replace(' ', '+')
+    for pageno in range(0, 9):
+        url = "https://www.google.com/search?q=" + keyword + "&start=" + str(10 * pageno)
+        page = requests.get(url)
+        soup = BeautifulSoup(page.content, 'html.parser')
+        links = soup.find_all('cite')
+        for index, link in enumerate(links, start=1):
+            found = "itwonders-web" in link.text
+            if found:
+                #Get Title
+                snippet_title = soup.find_all('cite')[index-1].find_previous('h3').text
+                #Get Meta Description
+                snippet_desc = soup.find_all('cite')[index-1].find_next('span', class_='st').text
+                break
+        if found:
+            rankpos = rankpos + index
+            break
+        rankpos = rankpos + index
+        time.sleep(random.randint(3, 5))
+    if found:
+        return rankpos
+    return "N/A"
+
 
 if __name__ == "__main__":
     arg_parser = argparse.ArgumentParser()
 
     arg_parser.add_argument('site', help='URL of the site you are wanting to analyze.')
+    arg_parser.add_argument('-sp', '--is-singlepage', help='crawl single page, ignore internal linking', default=True, type=lambda x: (str(x).lower() == 'true'))
     arg_parser.add_argument('-s', '--sitemap', help='URL of the sitemap to seed the crawler with.')
     arg_parser.add_argument('-f', '--output-format', help='Output format.', choices=['json', 'html', ], default='json')
 
     args = arg_parser.parse_args()
 
-    output = analyze(args.site, args.sitemap)
+    output = analyze(args.site, args.sitemap, args.is_singlepage)
 
     if args.output_format == 'html':
         from jinja2 import Environment
