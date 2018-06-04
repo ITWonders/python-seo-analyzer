@@ -19,6 +19,7 @@ import json
 import re
 import certifi
 import requests
+import datetime
 import socket
 import time
 import os
@@ -674,6 +675,8 @@ def analyze(site, sitemap=None, is_singlepage=True, verbose=False, **session_par
 
     return output
 
+# Custom Functions 
+
 def getProjectList():
     results = []
     collection = db['projects']
@@ -681,42 +684,90 @@ def getProjectList():
         results.append(document)
     return dumps(results)
 
+def manualBatchSearch():
+    keywords = []
+    collection = db['projects']
+    for document in collection.find({'domain': 'https://www.itwonders-web.com' }):
+        for keyword in document['keywordList']:
+            searchKeyword(keyword)
+
 def getKeywords():
     results = []
-    collection = db['keywords']
+    collection = db['scrapedKeywords']
+    for document in collection.find().limit(9):
+        results.append(document)
+    return dumps(results)
+
+def getPreviousTracked():
+    results = []
+    collection = db['scrapedKeywords']
+    yesterday = datetime.datetime.now() - datetime.timedelta(days = 1)
+    yesterday_beginning = datetime.datetime(yesterday.year, yesterday.month, yesterday.day, 0, 0, 0, 0)
+    yesterday_end = datetime.datetime(yesterday.year, yesterday.month, yesterday.day,23,59,59,999)
+    for document in collection.find({'date': {'$gt': yesterday_beginning, '$lt': yesterday_end}}, {"date":1,"rank":1}).limit(9):
+        results.append(document)
+    return dumps(results)
+
+def getGraphData():
+    results = []
+    collection = db['scrapedKeywords']
     for document in collection.find():
         results.append(document)
     return dumps(results)
 
-def saveKeywords():
-    return "Saving keywords"
+def saveScrapedData(data):
+    collection = db['scrapedKeywords']
+    collection.insert(data)
 
 def searchKeyword(keyword):
     found = False
+    overall_rank = 0
+    organic_rank = 0
     rankpos = 0
-    keyword = keyword.replace(' ', '+')
+    fullpageData = []
     for pageno in range(0, 9):
-        url = "https://www.google.com/search?q=" + keyword + "&start=" + str(10 * pageno)
+        url = "https://www.google.com/search?q=" + keyword.replace(' ', '+') + "&start=" + str(10 * pageno)
         page = requests.get(url)
         soup = BeautifulSoup(page.content, 'html.parser')
         links = soup.find_all('cite')
         for index, link in enumerate(links, start=1):
+            #Fullpage Data
+            fullpageData.append(grabSnippet(soup, index, link))
             found = "itwonders-web" in link.text
             if found:
-                #Get Title
-                snippet_title = soup.find_all('cite')[index-1].find_previous('h3').text
-                #Get Meta Description
-                snippet_desc = soup.find_all('cite')[index-1].find_next('span', class_='st').text
+                snippet = grabSnippet(soup, index, link)
                 break
         if found:
             rankpos = rankpos + index
             break
         rankpos = rankpos + index
-        time.sleep(random.randint(3, 5))
+        time.sleep(random.randint(3,5))
     if found:
+        data = {'name': keyword, 'date': datetime.datetime.now(), 'rank': rankpos, 'snippet': snippet, 'fullpageData': fullpageData}
+        saveScrapedData(data)
         return rankpos
+    data = {'name': keyword, 'date': datetime.datetime.now(), 'rank': 'N/A', 'snippet': {'title': 'N/A', 'url': 'N/A', 'desc': 'N/A'}, 'fullpageData': fullpageData}
+    saveScrapedData(data)
     return "N/A"
 
+def grabSnippet(soup, index, link):
+    #Get Title
+    snippet_title = soup.find_all('cite')[index - 1].find_previous('h3').text
+    #Get URL
+    snippet_url = link.text
+    #Type
+    if link.get("class") == ["UdQCqe"]:
+        #Get Meta Description
+        snippet_desc = soup.find_all('cite')[index - 1].find_next('div', class_='ads-creative').text
+        snippet_type = 'Ads'
+    else:
+        #Get Meta Description
+        snippet_desc = soup.find_all('cite')[index - 1].find_next('span', class_='st').text
+        snippet_type = 'Organic'
+    return {'title': snippet_title, 'url': snippet_url, 'desc': snippet_desc, 'type': snippet_type}
+
+
+# End of custom functions
 
 if __name__ == "__main__":
     arg_parser = argparse.ArgumentParser()
