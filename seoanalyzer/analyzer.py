@@ -7,7 +7,7 @@ from string import punctuation
 from urllib.parse import urlsplit
 from xml.dom import minidom
 from requests.structures import CaseInsensitiveDict
-from pymongo import MongoClient
+import pymongo
 from bson import Binary, Code
 from bson.json_util import dumps
 
@@ -41,7 +41,7 @@ if list(sys.version_info)[:2] >= [3, 6]:
 # Connect To: Localhost:27017
 # Database: itwonders
 try:
-    client = MongoClient('localhost', 27017)
+    client = pymongo.MongoClient('localhost', 27017)
     db = client['itwonders']
 except:
     print("Can't connect to MongoDB server with database itwonders.")
@@ -694,7 +694,7 @@ def manualBatchSearch():
 def getKeywords():
     results = []
     collection = db['scrapedKeywords']
-    for document in collection.find().limit(9):
+    for document in collection.find().sort('date', pymongo.DESCENDING).limit(9):
         results.append(document)
     return dumps(results)
 
@@ -703,10 +703,13 @@ def getPreviousTracked():
     collection = db['scrapedKeywords']
     yesterday = datetime.datetime.now() - datetime.timedelta(days = 1)
     yesterday_beginning = datetime.datetime(yesterday.year, yesterday.month, yesterday.day, 0, 0, 0, 0)
-    yesterday_end = datetime.datetime(yesterday.year, yesterday.month, yesterday.day,23,59,59,999)
-    for document in collection.find({'date': {'$gt': yesterday_beginning, '$lt': yesterday_end}}, {"date":1,"rank":1}).limit(9):
+    yesterday_end = datetime.datetime(yesterday.year, yesterday.month, yesterday.day, 23, 59, 59, 999)
+    for document in collection.find().skip(9).limit(9).sort('date', pymongo.DESCENDING):
         results.append(document)
     return dumps(results)
+    #for document in collection.find({'date': {'$gt': yesterday_beginning, '$lt': yesterday_end}}, {"date":1,"rank":1}).limit(9):
+    #    results.append(document)
+    #return dumps(results)
 
 def getGraphData():
     results = []
