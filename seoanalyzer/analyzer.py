@@ -8,8 +8,8 @@ from urllib.parse import urlsplit
 from xml.dom import minidom
 from requests.structures import CaseInsensitiveDict
 import pymongo
-from bson import Binary, Code
-from bson.json_util import dumps
+from bson import Binary, Code, ObjectId
+from bson.json_util import dumps, loads
 
 import random
 import inspect
@@ -720,7 +720,8 @@ def getGraphData():
 
 def saveScrapedData(data):
     collection = db['scrapedKeywords']
-    collection.insert(data)
+    log['project'] = ObjectId(log['project'])
+    return True
 
 def searchKeyword(keyword):
     found = False
@@ -768,6 +769,26 @@ def grabSnippet(soup, index, link):
         snippet_desc = soup.find_all('cite')[index - 1].find_next('span', class_='st').text
         snippet_type = 'Organic'
     return {'title': snippet_title, 'url': snippet_url, 'desc': snippet_desc, 'type': snippet_type}
+
+def getAuditLog():
+    results = []
+    collection = db['auditLogs']
+    for document in collection.find():
+        results.append(document)
+    return dumps(results)
+
+def saveAuditLog(log):
+    collection = db['auditLogs']
+    collection.insert(log)
+
+def updateAuditLog(log):
+    collection = db['auditLogs']
+    collection.find_one_and_update({"_id": ObjectId(log['_id']['$oid']) },{"$set": {"title": log['title'], "description": log['description'], "date": log['eventDate'], "categories": log['categories'] }})
+
+def saveKeywords(keywordList):
+    collection = db['projects']
+    collection.find_one_and_update({"_id": keywordList['_id'] },{"$set": {"keywordList": keywordList['keywordList'] }})
+    return
 
 
 # End of custom functions
