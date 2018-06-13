@@ -720,7 +720,7 @@ def getGraphData():
 
 def saveScrapedData(data):
     collection = db['scrapedKeywords']
-    log['project'] = ObjectId(log['project'])
+    collection.insert(data)
     return True
 
 def searchKeyword(keyword):
